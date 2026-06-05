@@ -1,0 +1,12 @@
+{
+  "name": "scout-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Scout /plan service — orchestrates Claude + travel partner APIs (provider registry).",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node --env-file=.env server.js",
+    "dev": "node --watch --env-file=.env server.js"
+  }
+}

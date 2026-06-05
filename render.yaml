@@ -1,0 +1,40 @@
+# Render blueprint — deploy the Scout backend with one click.
+# Push this repo to GitHub, then: Render Dashboard → New → Blueprint → pick the repo.
+# Set the secret env vars (sync:false) in the dashboard after the first deploy.
+services:
+  - type: web
+    name: scout-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8787"
+      - key: SCOUT_MODEL
+        value: claude-haiku-4-5
+      # Secrets — set these in the Render dashboard (never commit them):
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AMADEUS_CLIENT_ID
+        sync: false
+      - key: AMADEUS_CLIENT_SECRET
+        sync: false
+      - key: DUFFEL_TOKEN
+        sync: false
+      - key: VIATOR_API_KEY
+        sync: false
+      - key: TRIPADVISOR_API_KEY
+        sync: false
+      - key: GETYOURGUIDE_TOKEN
+        sync: false
+      - key: EXPEDIA_API_KEY
+        sync: false
+      - key: EXPEDIA_SHARED_SECRET
+        sync: false
+      - key: BOOKING_TOKEN
+        sync: false
+      - key: BOOKING_AFFILIATE_ID
+        sync: false
