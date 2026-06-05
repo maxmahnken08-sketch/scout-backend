@@ -5,7 +5,7 @@
 // runs the real provider search when that tool is requested.
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest';
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-20241022';
 const VERSION = '2023-06-01';
 
 export function hasClaude() {
