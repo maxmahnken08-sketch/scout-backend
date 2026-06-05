@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { planTrip } from './lib/normalize.js';
-import { chat as claudeChat, hasClaude } from './providers/anthropic.js';
+import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic.js';
 
 const PORT = process.env.PORT || 8787;
 
@@ -61,6 +61,16 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/health') {
       res.end(JSON.stringify({ ok: true, service: 'scout-backend', ai: hasClaude() }));
+      return;
+    }
+
+    // Debug: which models can this key reach, and which one we'll use.
+    if (url.pathname === '/models') {
+      if (!hasClaude()) {
+        res.end(JSON.stringify({ ai: false, error: 'no ANTHROPIC_API_KEY' }));
+        return;
+      }
+      res.end(JSON.stringify(await listModels()));
       return;
     }
 

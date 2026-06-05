@@ -5,11 +5,42 @@
 // runs the real provider search when that tool is requested.
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-20241022';
+const MODELS_URL = 'https://api.anthropic.com/v1/models';
 const VERSION = '2023-06-01';
 
 export function hasClaude() {
   return !!process.env.ANTHROPIC_API_KEY;
+}
+
+// Resolve which model to call. If ANTHROPIC_MODEL is set, trust it. Otherwise
+// ask the API which models THIS key can access and pick the cheapest sensible
+// one (Haiku > Sonnet > whatever's first). Cached after the first lookup so we
+// don't pay the round-trip on every chat.
+let cachedModel = null;
+async function resolveModel() {
+  if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
+  if (cachedModel) return cachedModel;
+
+  const res = await fetch(MODELS_URL, {
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': VERSION,
+    },
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Anthropic models ${res.status}: ${detail.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const ids = (data.data || []).map((m) => m.id);
+  // Prefer cheapest-to-priciest, newest-looking first within each family.
+  const pick =
+    ids.filter((id) => id.includes('haiku')).sort().reverse()[0] ||
+    ids.filter((id) => id.includes('sonnet')).sort().reverse()[0] ||
+    ids[0];
+  if (!pick) throw new Error('Anthropic: no models available for this key');
+  cachedModel = pick;
+  return pick;
 }
 
 const SYSTEM = `You are Scout, a warm, sharp, expert travel assistant living inside a travel-planning iOS app.
@@ -56,8 +87,9 @@ const TOOLS = [
  * @returns {Promise<{ text:string, toolQuery:string|null, raw:object }>}
  */
 export async function chat(messages) {
+  const model = await resolveModel();
   const body = {
-    model: MODEL,
+    model,
     max_tokens: 1024,
     system: SYSTEM,
     tools: TOOLS,
@@ -92,4 +124,19 @@ export async function chat(messages) {
   }
 
   return { text: text.trim(), toolQuery, raw: data };
+}
+
+/** Debug helper: list model IDs this key can access, and which one we'd pick. */
+export async function listModels() {
+  const res = await fetch(MODELS_URL, {
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': VERSION,
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  const ids = (data.data || []).map((m) => m.id);
+  let picked = null;
+  try { picked = await resolveModel(); } catch {}
+  return { status: res.status, ids, picked };
 }
