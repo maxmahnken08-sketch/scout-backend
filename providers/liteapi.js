@@ -117,7 +117,10 @@ function stubStays(intent) {
 // Diagnostic: run the pipeline WITHOUT the stub fallback so callers see the
 // real failure point + message. Used by the /debug/stays route.
 export async function debugStays(intent) {
-  const out = { key: !!KEY(), steps: {} };
+  const k = KEY();
+  // Safe fingerprint: prefix + length + last 4 — enough to compare, never the full secret.
+  const fingerprint = k ? `${k.slice(0, 5)}…${k.slice(-4)} (len ${k.length}, ws:${/\s/.test(k)})` : 'none';
+  const out = { key: !!k, fingerprint, steps: {} };
   try {
     const place = await resolvePlace(intent);
     out.steps.resolvePlace = place;
