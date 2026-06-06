@@ -114,6 +114,29 @@ function stubStays(intent) {
   ];
 }
 
+// Diagnostic: run the pipeline WITHOUT the stub fallback so callers see the
+// real failure point + message. Used by the /debug/stays route.
+export async function debugStays(intent) {
+  const out = { key: !!KEY(), steps: {} };
+  try {
+    const place = await resolvePlace(intent);
+    out.steps.resolvePlace = place;
+    if (!place) { out.error = 'resolvePlace returned null'; return out; }
+
+    const { ids, byId } = await hotelIdsFor(place);
+    out.steps.hotelIds = ids;
+    if (!ids.length) { out.error = 'no hotel ids'; return out; }
+
+    const rated = await ratesFor(ids, intent);
+    out.steps.ratedCount = rated.length;
+    out.steps.sampleEntryKeys = rated[0] ? Object.keys(rated[0]) : null;
+    out.steps.firstNightly = rated[0] ? nightlyPriceOf(rated[0], intent.nights || 5) : null;
+  } catch (err) {
+    out.error = String(err?.message || err);
+  }
+  return out;
+}
+
 export const liteapiStays = {
   name: 'LiteAPI',
   kind: 'stays',

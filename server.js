@@ -75,6 +75,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Debug: run the LiteAPI stays pipeline and surface the real failure point.
+    if (url.pathname === '/debug/stays') {
+      const { debugStays } = await import('./providers/liteapi.js');
+      const out = await debugStays({
+        destination: url.searchParams.get('city') || 'Lisbon',
+        country: url.searchParams.get('country') || 'Portugal',
+        nights: 5,
+      });
+      res.end(JSON.stringify(out));
+      return;
+    }
+
     // Debug: which models can this key reach, and which one we'll use.
     if (url.pathname === '/models') {
       if (!hasClaude()) {
