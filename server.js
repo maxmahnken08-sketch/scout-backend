@@ -11,7 +11,7 @@ function readJson(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 1_000_000) reject(new Error('payload too large'));
+      if (data.length > 12_000_000) reject(new Error('payload too large')); // allow attached photos
     });
     req.on('end', () => {
       try {
@@ -29,8 +29,12 @@ function readJson(req) {
 // to the rule-based planner if no ANTHROPIC_API_KEY is configured.
 async function handleChat(messages) {
   const history = (messages || [])
-    .filter((m) => m && typeof m.content === 'string' && m.content.trim())
-    .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+    .filter((m) => m && (typeof m.content === 'string' && m.content.trim() || m.image))
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content || '',
+      image: m.image, // {data, mediaType} — passed to Claude vision
+    }));
 
   const lastUser = [...history].reverse().find((m) => m.role === 'user')?.content || '';
 

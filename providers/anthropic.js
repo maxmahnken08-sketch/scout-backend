@@ -60,6 +60,9 @@ Behavior:
   answer. Do NOT call the tool for general questions. If they're still deciding where to go,
   help them decide first, then offer to plan it.
 - Never invent specific live prices or flight numbers in text — the trip card provides those.
+- When the user attaches a PHOTO, look at it and use it: identify the place/landmark if you can,
+  read menus/signs, infer the vibe they want, and fold that into your answer or trip. If you can't
+  tell what it is, say so and ask a quick clarifying question.
 - Be honest if you're unsure. You are not a licensed financial, legal, or medical advisor.`;
 
 const TOOLS = [
@@ -93,7 +96,19 @@ export async function chat(messages) {
     max_tokens: 1024,
     system: SYSTEM,
     tools: TOOLS,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    // Support attached photos: when a message has image{data,mediaType}, send a
+    // vision content block alongside the text so Claude can actually see it.
+    messages: messages.map((m) => {
+      if (m.image && m.image.data) {
+        const blocks = [{
+          type: 'image',
+          source: { type: 'base64', media_type: m.image.mediaType || 'image/jpeg', data: m.image.data },
+        }];
+        if (m.content) blocks.push({ type: 'text', text: m.content });
+        return { role: m.role, content: blocks };
+      }
+      return { role: m.role, content: m.content };
+    }),
   };
 
   const res = await fetch(API_URL, {
