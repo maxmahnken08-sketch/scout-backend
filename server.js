@@ -77,6 +77,38 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Hosted payment page — embeds LiteAPI's payment SDK. The app loads this in a
+    // WebView; on success the SDK redirects to /pay/done?tid=&pid= which the app
+    // intercepts to finalize the booking. `publicKey` is just the env string.
+    if (url.pathname === '/pay') {
+      const secret = url.searchParams.get('secret') || '';
+      const env = (process.env.LITEAPI_KEY || '').startsWith('sand_') ? 'sandbox' : 'live';
+      const base = `${url.protocol}//${req.headers.host}`;
+      res.setHeader('Content-Type', 'text/html');
+      res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>body{margin:0;background:#0E0F13;color:#F5F5F7;font-family:-apple-system,system-ui;padding:16px}#targetElement{margin-top:8px}</style>
+<script src="https://payment-wrapper.liteapi.travel/dist/liteAPIPayment.js?v=a1"></script></head>
+<body><div id="targetElement"></div>
+<script>
+  var cfg = {
+    publicKey: ${JSON.stringify(env)},
+    appearance: { theme: 'flat' },
+    options: { business: { name: 'Scout' } },
+    targetElement: '#targetElement',
+    secretKey: ${JSON.stringify(secret)},
+    returnUrl: ${JSON.stringify(base + '/pay/done')}
+  };
+  var p = new LiteAPIPayment(cfg);
+  p.handlePayment();
+</script></body></html>`);
+      return;
+    }
+    if (url.pathname === '/pay/done') {
+      res.setHeader('Content-Type', 'text/html');
+      res.end('<!doctype html><html><body style="background:#0E0F13;color:#F5F5F7;font-family:-apple-system;text-align:center;padding-top:80px"><h2>Payment complete</h2><p>Finishing your booking…</p></body></html>');
+      return;
+    }
+
     // ---- Hotel booking flow (prebook → pay via SDK → book) ----
     if (url.pathname === '/hotels/offer' && req.method === 'POST') {
       const b = await readJson(req);
