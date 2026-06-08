@@ -36,16 +36,26 @@ export async function searchTravelpayoutsFlights(intent) {
   try {
     const origin = intent.origin || "JFK";
     const dest = intent.destinationCode;
-    const month = (intent.departureDate || daysFromNow(30)).slice(0, 7); // YYYY-MM
-    const params = new URLSearchParams({
-      origin, destination: dest, departure_at: month,
-      currency: "usd", sorting: "price", direct: "false", limit: "5",
-      one_way: "true", token: TOKEN(),
-    });
-    const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
-    if (!res.ok) throw new Error(`Travelpayouts flights ${res.status}`);
-    const json = await res.json();
-    return (json.data || []).slice(0, 3).map((f) => ({
+    const fullDate = intent.departureDate || daysFromNow(30); // YYYY-MM-DD
+    const month = fullDate.slice(0, 7);                        // YYYY-MM
+
+    const query = async (departure_at) => {
+      const params = new URLSearchParams({
+        origin, destination: dest, departure_at,
+        currency: "usd", sorting: "price", direct: "false", limit: "5",
+        one_way: "true", token: TOKEN(),
+      });
+      const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
+      if (!res.ok) throw new Error(`Travelpayouts flights ${res.status}`);
+      const json = await res.json();
+      return json.data || [];
+    };
+
+    // Prefer the exact requested date; if no fares that day, widen to the month.
+    let data = await query(fullDate);
+    if (!data.length) data = await query(month);
+
+    return data.slice(0, 3).map((f) => ({
       airline: AIRLINES[f.airline] || f.airline,
       route: `${f.origin_airport || f.origin} → ${f.destination_airport || f.destination}`,
       duration: minutesToText(f.duration),
