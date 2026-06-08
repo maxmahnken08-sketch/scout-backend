@@ -4,14 +4,45 @@
 // attach it to intent.viatorDestId. Without it we fall back to the stub.
 
 const SEARCH = 'https://api.viator.com/partner/products/search';
+const DESTINATIONS = 'https://api.viator.com/partner/destinations';
+
+// Cache the (large) destination taxonomy in memory after the first fetch so we
+// can map a city name → Viator's numeric destinationId on demand.
+let destCache = null;
+async function resolveDestId(city) {
+  if (!city) return null;
+  try {
+    if (!destCache) {
+      const res = await fetch(DESTINATIONS, {
+        headers: {
+          'exp-api-key': process.env.VIATOR_API_KEY,
+          Accept: 'application/json;version=2.0',
+          'Accept-Language': 'en-US',
+        },
+      });
+      if (!res.ok) throw new Error(`Viator destinations ${res.status}`);
+      destCache = (await res.json()).destinations || [];
+    }
+    const want = city.toLowerCase();
+    // Prefer an exact city/name match, else the first partial match.
+    const exact = destCache.find((d) => (d.name || '').toLowerCase() === want);
+    const partial = exact || destCache.find((d) => (d.name || '').toLowerCase().includes(want));
+    return partial?.destinationId ?? partial?.ref ?? null;
+  } catch (err) {
+    console.warn('Viator destination resolve failed:', err?.message || err);
+    return null;
+  }
+}
 
 export const viator = {
   name: 'Viator',
   kind: 'activities',
   async search(intent) {
-    if (!process.env.VIATOR_API_KEY || !intent.viatorDestId) return stub(intent);
+    if (!process.env.VIATOR_API_KEY) return stub(intent);
     try {
-      return await live(intent);
+      const destId = intent.viatorDestId || await resolveDestId(intent.destination);
+      if (!destId) return stub(intent);
+      return await live({ ...intent, viatorDestId: destId });
     } catch (err) {
       console.warn('Viator live search failed:', err?.message || err);
       return stub(intent);
