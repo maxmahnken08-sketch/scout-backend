@@ -69,6 +69,62 @@ export async function searchTravelpayoutsFlights(intent) {
   }
 }
 
+// --- Flexible-dates deal check (Hopper-style, gentle) ---------------------
+// Looks at prices around the requested departure date; if a nearby date is
+// meaningfully cheaper, returns a soft suggestion. Returns null otherwise so
+// the app shows nothing (never pushy).
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function niceDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${MONTH_SHORT[m - 1]} ${d}`;
+}
+
+export async function flightDeal(intent) {
+  if (!TOKEN() || !intent.destinationCode || !intent.departureDate) return null;
+  try {
+    const origin = intent.origin || 'JFK';
+    const month = intent.departureDate.slice(0, 7);
+    const params = new URLSearchParams({
+      origin, destination: intent.destinationCode, departure_at: month,
+      currency: 'usd', sorting: 'price', direct: 'false', limit: '30', one_way: 'true', token: TOKEN(),
+    });
+    const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
+    if (!res.ok) return null;
+    const data = (await res.json()).data || [];
+    if (data.length < 2) return null;
+
+    // Map each date → cheapest price; restrict to within 7 days of the request.
+    const byDate = {};
+    for (const f of data) {
+      const date = (f.departure_at || '').slice(0, 10);
+      if (!date) continue;
+      const price = Math.round(f.price);
+      if (!byDate[date] || price < byDate[date]) byDate[date] = price;
+    }
+    const reqDate = intent.departureDate;
+    const reqTime = new Date(reqDate).getTime();
+    const within7 = Object.entries(byDate).filter(([dt]) =>
+      Math.abs(new Date(dt).getTime() - reqTime) <= 7 * 86400000);
+    if (!within7.length) return null;
+
+    const requestedPrice = byDate[reqDate] ?? Math.min(...within7.map(([, p]) => p));
+    let [bestDate, bestPrice] = within7.reduce((a, b) => (b[1] < a[1] ? b : a));
+    const savings = requestedPrice - bestPrice;
+
+    // Only suggest when it's a real win and a different day.
+    if (bestDate !== reqDate && savings >= Math.max(25, requestedPrice * 0.1)) {
+      return {
+        suggestedDate: bestDate,
+        savings,
+        note: `Flexible on dates? Leaving ${niceDate(bestDate)} looks about $${savings} cheaper.`,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Hotels (registered as a stays provider) ------------------------------
 
 export const travelpayoutsStays = {
