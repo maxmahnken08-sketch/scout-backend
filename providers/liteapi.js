@@ -163,7 +163,11 @@ export const liteapiStays = {
           name: meta.name || entry.name || 'Hotel',
           area: meta.city || place.cityName,
           nightlyPrice: nightlyPriceOf(entry, nights),
-          rating: Number(meta.stars || meta.rating || 4),
+          // Prefer the 1–5 star class; if absent, convert the 0–10 guest score
+          // to a 5-point scale so the UI never shows e.g. "8.8★".
+          rating: meta.stars > 0
+            ? Number(meta.stars)
+            : (meta.rating > 0 ? Math.round((meta.rating / 2) * 10) / 10 : 4),
           tag: 'LiteAPI',
           // In-app booking goes through LiteAPI's prebook/book flow (future);
           // for now leave bookingURL null so the UI doesn't show a dead link.
