@@ -212,6 +212,7 @@ export const liteapiStays = {
         const brand = chainOf(name);
         return {
           name,
+          hotelId: id, // small id; lets the app re-fetch a fresh offer at book time
           area: meta.city || place.cityName,
           nightlyPrice: nightlyPriceOf(entry, nights),
           // Prefer the 1–5 star class; if absent, convert the 0–10 guest score
@@ -236,3 +237,91 @@ export const liteapiStays = {
     }
   },
 };
+
+// ---- Booking flow (prebook → pay via LiteAPI Stripe SDK → book) ------------
+// LiteAPI rate offers are large and short-lived, so we DON'T ship offerIds in
+// /plan. Instead, at book time the app sends {hotelId, checkin, checkout} and we
+// fetch a FRESH offer, then prebook it.
+
+// LiteAPI responses can contain raw control chars (in terms text) that break
+// strict JSON.parse — sanitize before parsing.
+async function liteJson(res) {
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch { return JSON.parse(text.replace(/[ -]+/g, ' ')); }
+}
+
+// Get the current cheapest offer for one hotel over the given dates.
+export async function freshOffer({ hotelId, checkin, checkout, adults = 2 }) {
+  if (!KEY()) throw new Error('LITEAPI_KEY not set');
+  const body = {
+    hotelIds: [hotelId],
+    checkin, checkout,
+    occupancies: [{ adults: Number(adults) || 2 }],
+    currency: 'USD', guestNationality: 'US',
+  };
+  const res = await fetch(`${BASE}/hotels/rates`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`LiteAPI rates ${res.status}`);
+  const json = await liteJson(res);
+  const entry = (json.data || [])[0];
+  const rate = entry?.roomTypes?.[0]?.rates?.[0];
+  const offerId = entry?.roomTypes?.[0]?.offerId;
+  if (!offerId) throw new Error('no offer available for these dates');
+  return {
+    offerId,
+    name: rate?.name || 'Room',
+    boardName: rate?.boardName || null,
+    total: rate?.retailRate?.total?.[0]?.amount ?? null,
+    currency: rate?.retailRate?.total?.[0]?.currency ?? 'USD',
+    cancellationPolicies: rate?.cancellationPolicies ?? null,
+  };
+}
+
+// Confirm the live price + set up payment. usePaymentSdk:true returns a Stripe
+// client secret (secretKey) + transactionId the app uses to collect payment.
+export async function prebook(offerId) {
+  if (!KEY()) throw new Error('LITEAPI_KEY not set');
+  const res = await fetch(`${BASE}/rates/prebook`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ offerId, usePaymentSdk: true }),
+  });
+  if (!res.ok) throw new Error(`LiteAPI prebook ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = await liteJson(res);
+  const d = json.data || json;
+  return {
+    prebookId: d.prebookId,
+    transactionId: d.transactionId,
+    secretKey: d.secretKey,          // Stripe PaymentIntent client secret
+    price: d.price,
+    currency: d.currency,
+    sellingPrice: d.sellingPriceToUser ?? d.price,
+    cancellationPolicies: d.cancellationPolicies ?? null,
+    termsAndConditions: d.termsAndConditions ?? null,
+  };
+}
+
+// Finalize the booking after payment is confirmed via the SDK (transactionId).
+export async function book({ prebookId, transactionId, holder, guests }) {
+  if (!KEY()) throw new Error('LITEAPI_KEY not set');
+  const res = await fetch(`${BASE}/rates/book`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({
+      prebookId,
+      holder,                                   // {firstName,lastName,email}
+      payment: { method: 'TRANSACTION_ID', transactionId },
+      guests,                                   // [{occupancyNumber,firstName,lastName,email}]
+    }),
+  });
+  if (!res.ok) throw new Error(`LiteAPI book ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = await liteJson(res);
+  const d = json.data || json;
+  return {
+    bookingId: d.bookingId,
+    status: d.status,
+    confirmation: d.supplierBookingId || d.hotelConfirmationCode || d.bookingId,
+    hotelName: d.hotel?.name || d.hotelName || null,
+    checkin: d.checkin, checkout: d.checkout,
+  };
+}

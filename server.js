@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { planTrip } from './lib/normalize.js';
 import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic.js';
+import { freshOffer, prebook, book } from './providers/liteapi.js';
 
 const PORT = process.env.PORT || 8787;
 
@@ -73,6 +74,27 @@ const server = http.createServer(async (req, res) => {
           viator: !!process.env.VIATOR_API_KEY,
         },
       }));
+      return;
+    }
+
+    // ---- Hotel booking flow (prebook → pay via SDK → book) ----
+    if (url.pathname === '/hotels/offer' && req.method === 'POST') {
+      const b = await readJson(req);
+      res.end(JSON.stringify(await freshOffer(b)));
+      return;
+    }
+    if (url.pathname === '/hotels/prebook' && req.method === 'POST') {
+      const b = await readJson(req);
+      if (!b.offerId) { res.statusCode = 400; res.end(JSON.stringify({ error: 'missing offerId' })); return; }
+      res.end(JSON.stringify(await prebook(b.offerId)));
+      return;
+    }
+    if (url.pathname === '/hotels/book' && req.method === 'POST') {
+      const b = await readJson(req);
+      if (!b.prebookId || !b.transactionId) {
+        res.statusCode = 400; res.end(JSON.stringify({ error: 'missing prebookId or transactionId' })); return;
+      }
+      res.end(JSON.stringify(await book(b)));
       return;
     }
 
