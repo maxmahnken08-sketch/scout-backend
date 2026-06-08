@@ -68,6 +68,7 @@ const server = http.createServer(async (req, res) => {
           anthropic: !!process.env.ANTHROPIC_API_KEY,
           liteapi: !!(process.env.LITEAPI_KEY || process.env.LITEAPI_SANDBOX_KEY),
           travelpayouts: !!process.env.TRAVELPAYOUTS_TOKEN,
+          bookingAid: !!process.env.BOOKING_AID,
           yelp: !!process.env.YELP_API_KEY,
           viator: !!process.env.VIATOR_API_KEY,
         },

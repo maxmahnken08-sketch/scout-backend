@@ -20,6 +20,21 @@ function headers() {
   return { 'content-type': 'application/json', 'X-API-Key': KEY() };
 }
 
+// Booking.com affiliate "Book" deep-link: opens Booking.com pre-filled with the
+// hotel + dates, carrying the affiliate id so a booking earns commission.
+// Works without the id (just no commission) — set BOOKING_AID on Render to monetize.
+function BOOKING_AID() { return process.env.BOOKING_AID || ''; }
+function bookingDeepLink(name, city, checkin, checkout) {
+  const params = [
+    `ss=${encodeURIComponent(`${name}, ${city}`)}`,
+    checkin ? `checkin=${checkin}` : '',
+    checkout ? `checkout=${checkout}` : '',
+    'group_adults=2', 'no_rooms=1', 'group_children=0',
+    BOOKING_AID() ? `aid=${BOOKING_AID()}` : '',
+  ].filter(Boolean).join('&');
+  return `https://www.booking.com/searchresults.html?${params}`;
+}
+
 function daysFromNow(n) {
   // Date.now() is unavailable in some sandboxes; backend runs in Node so it's fine here.
   const d = new Date(Date.now() + n * 86400000);
@@ -206,9 +221,9 @@ export const liteapiStays = {
             : (meta.rating > 0 ? Math.round((meta.rating / 2) * 10) / 10 : 4),
           // Label recognizable brands so users see familiar names highlighted.
           tag: brand || (meta.stars >= 5 ? 'Luxury' : 'Great value'),
-          // In-app booking goes through LiteAPI's prebook/book flow (future);
-          // for now leave bookingURL null so the UI doesn't show a dead link.
-          bookingURL: null,
+          // "Book" → Booking.com affiliate deep-link (commission via BOOKING_AID).
+          bookingURL: bookingDeepLink(name, meta.city || place.cityName,
+                                      intent.checkin, intent.checkout),
         };
       }).filter((s) => s.nightlyPrice > 0);
 
