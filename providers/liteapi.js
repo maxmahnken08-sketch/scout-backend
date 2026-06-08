@@ -71,7 +71,41 @@ async function hotelIdsFor(place) {
   // keep a name+stars lookup so we can enrich rate results
   const byId = {};
   for (const h of list) byId[h.id || h.hotelId] = h;
-  return { ids: Object.keys(byId).slice(0, 12), byId };
+  return { ids: Object.keys(byId).slice(0, 40), byId };
+}
+
+// Recognizable hotel brands, so we can guarantee mainstream options appear
+// (not just the cheapest independents).
+const CHAINS = [
+  'Marriott', 'Hilton', 'Hyatt', 'Holiday Inn', 'Hampton', 'Sheraton', 'Westin',
+  'DoubleTree', 'Courtyard', 'Ritz', 'Four Seasons', 'Wyndham', 'Best Western',
+  'Crowne', 'InterContinental', 'Renaissance', 'Aloft', 'Embassy', 'Kimpton',
+  'Conrad', 'Waldorf', 'Le Meridien', 'Sofitel', 'Novotel', 'Radisson',
+  'Fairmont', 'St. Regis', 'JW Marriott', 'Moxy', 'Residence Inn', 'Fairfield',
+];
+function chainOf(name) {
+  const lower = (name || '').toLowerCase();
+  return CHAINS.find((c) => lower.includes(c.toLowerCase())) || null;
+}
+
+// Choose a diverse, useful set: a budget pick + recognizable mainstream chains
+// (cheapest per distinct brand) + fill with next-cheapest. Keeps users in
+// familiar territory instead of only obscure cheapest options.
+function pickDiverse(mapped, limit) {
+  const byPrice = [...mapped].sort((a, b) => a.nightlyPrice - b.nightlyPrice);
+  const chosen = [];
+  const seen = new Set();
+  const usedChain = new Set();
+  const add = (h) => { if (h && !seen.has(h.name)) { seen.add(h.name); chosen.push(h); } };
+
+  add(byPrice[0]); // a cheapest option
+  for (const h of byPrice) { // recognizable chains, cheapest per brand
+    if (chosen.length >= limit) break;
+    const c = chainOf(h.name);
+    if (c && !usedChain.has(c)) { usedChain.add(c); add(h); }
+  }
+  for (const h of byPrice) { if (chosen.length >= limit) break; add(h); } // fill
+  return chosen.sort((a, b) => a.nightlyPrice - b.nightlyPrice).slice(0, limit);
 }
 
 async function ratesFor(ids, intent) {
@@ -159,8 +193,10 @@ export const liteapiStays = {
       const mapped = rated.map((entry) => {
         const id = entry.hotelId || entry.id;
         const meta = byId[id] || {};
+        const name = meta.name || entry.name || 'Hotel';
+        const brand = chainOf(name);
         return {
-          name: meta.name || entry.name || 'Hotel',
+          name,
           area: meta.city || place.cityName,
           nightlyPrice: nightlyPriceOf(entry, nights),
           // Prefer the 1–5 star class; if absent, convert the 0–10 guest score
@@ -168,15 +204,17 @@ export const liteapiStays = {
           rating: meta.stars > 0
             ? Number(meta.stars)
             : (meta.rating > 0 ? Math.round((meta.rating / 2) * 10) / 10 : 4),
-          tag: 'LiteAPI',
+          // Label recognizable brands so users see familiar names highlighted.
+          tag: brand || (meta.stars >= 5 ? 'Luxury' : 'Great value'),
           // In-app booking goes through LiteAPI's prebook/book flow (future);
           // for now leave bookingURL null so the UI doesn't show a dead link.
           bookingURL: null,
         };
       }).filter((s) => s.nightlyPrice > 0);
 
-      mapped.sort((a, b) => a.nightlyPrice - b.nightlyPrice);
-      return mapped.slice(0, 3).length ? mapped.slice(0, 3) : stubStays(intent);
+      // Surface a diverse mix (budget + mainstream chains), up to 6.
+      const picked = pickDiverse(mapped, 6);
+      return picked.length ? picked : stubStays(intent);
     } catch (err) {
       console.warn('LiteAPI hotels failed:', err?.message || err);
       return stubStays(intent);
