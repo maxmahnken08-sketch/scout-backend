@@ -27,7 +27,7 @@ function readJson(req) {
 // The conversational brain. Claude answers any question and decides when to
 // plan a trip; we run the real provider search for trip requests. Falls back
 // to the rule-based planner if no ANTHROPIC_API_KEY is configured.
-async function handleChat(messages) {
+async function handleChat(messages, origin) {
   const history = (messages || [])
     .filter((m) => m && (typeof m.content === 'string' && m.content.trim() || m.image))
     .map((m) => ({
@@ -40,14 +40,14 @@ async function handleChat(messages) {
 
   if (!hasClaude()) {
     // No AI key yet — keep working by always planning a trip (legacy behavior).
-    const plan = await planTrip(lastUser || 'trip');
+    const plan = await planTrip(lastUser || 'trip', { origin });
     return { reply: plan.intro, followUp: plan.followUp, trip: plan.trip };
   }
 
   const { text, toolQuery } = await claudeChat(history);
 
   if (toolQuery) {
-    const plan = await planTrip(toolQuery || lastUser);
+    const plan = await planTrip(toolQuery || lastUser, { origin });
     return {
       reply: text || plan.intro,
       followUp: plan.followUp,
@@ -178,7 +178,8 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: 'missing messages' }));
         return;
       }
-      const result = await handleChat(messages);
+      const origin = payload.origin || url.searchParams.get('origin');
+      const result = await handleChat(messages, origin);
       res.end(JSON.stringify(result));
       return;
     }
@@ -190,7 +191,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: 'missing query param ?q=' }));
         return;
       }
-      const plan = await planTrip(q);
+      const plan = await planTrip(q, { origin: url.searchParams.get('origin') });
       res.end(JSON.stringify(plan));
       return;
     }
