@@ -100,13 +100,14 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
     background:rgba(255,107,74,.13);border:1px solid rgba(255,107,74,.25);margin-bottom:16px;}
   .tile h3{font-size:20px;margin-bottom:7px;}.tile p{color:var(--muted);font-size:15px;}
 
-  /* showcase */
-  .stage{display:flex;gap:30px;justify-content:center;align-items:center;flex-wrap:wrap;perspective:1400px;}
-  .device{width:248px;border-radius:38px;border:1px solid var(--line);box-shadow:0 40px 90px rgba(0,0,0,.55);
-    transition:transform .4s;}
-  .device:hover{transform:rotateY(0) scale(1.03);}
-  .device.l{transform:rotateY(14deg) translateY(14px);}
-  .device.r{transform:rotateY(-14deg) translateY(14px);}
+  /* showcase — even 3-up grid, each with a caption */
+  .stage{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;align-items:start;}
+  .screen{display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px;}
+  .device{width:100%;max-width:260px;border-radius:40px;border:1px solid var(--line);
+    box-shadow:0 36px 80px rgba(0,0,0,.5);transition:transform .25s,box-shadow .25s;}
+  .screen:hover .device{transform:translateY(-8px);box-shadow:0 46px 96px rgba(255,107,74,.22);}
+  .screen .cap h3{font-size:19px;margin-bottom:5px;}
+  .screen .cap p{color:var(--muted);font-size:14.5px;max-width:280px;}
 
   /* steps */
   .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
@@ -134,8 +135,9 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
     .navlinks{display:none;}
     .bento{grid-template-columns:1fr;} .tile.wide,.tile.half,.tile.third{grid-column:span 1;}
     .steps{grid-template-columns:1fr;}
-    .device.l,.device.r{transform:none;}
+    .stage{grid-template-columns:1fr;gap:44px;}
   }
+  @media(max-width:880px) and (min-width:601px){.stage{grid-template-columns:repeat(3,1fr);}}
 </style></head><body>
 <div class="aurora"><span class="a1"></span><span class="a2"></span><span class="a3"></span></div>
 <div class="grain"></div>
@@ -212,9 +214,18 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
   <h2 class="h2">Beautiful, down to the detail</h2>
   <p class="sub">Real itineraries, real prices, laid out like a magazine.</p>
   <div class="stage">
-    <img class="device l" src="/assets/screen-trip.png" alt="Scout experiences and dining"/>
-    <img class="device" src="/assets/screen-detail.png" alt="Scout day-by-day itinerary"/>
-    <img class="device r" src="/assets/screen-light.png" alt="Scout in light mode"/>
+    <div class="screen">
+      <img class="device" src="/assets/screen-home.png" alt="Scout home with suggested prompts"/>
+      <div class="cap"><h3>Start with a prompt</h3><p>Tap an idea or type your own — Tokyo under $2k, a foodie weekend, somewhere warm.</p></div>
+    </div>
+    <div class="screen">
+      <img class="device" src="/assets/screen-agents.png" alt="Scout's specialist agents"/>
+      <div class="cap"><h3>Your travel crew</h3><p>Specialists for flights, stays, experiences, and trending eats — working for you.</p></div>
+    </div>
+    <div class="screen">
+      <img class="device" src="/assets/screen-itinerary.png" alt="Scout day-by-day itinerary"/>
+      <div class="cap"><h3>Day-by-day itinerary</h3><p>A complete plan with a budget breakdown, beautifully laid out.</p></div>
+    </div>
   </div>
 </section>
 
