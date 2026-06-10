@@ -2,6 +2,7 @@ import http from 'node:http';
 import { planTrip } from './lib/normalize.js';
 import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic.js';
 import { freshOffer, prebook, book } from './providers/liteapi.js';
+import { termsHTML, privacyHTML, supportHTML } from './legal.js';
 
 const PORT = process.env.PORT || 8787;
 
@@ -64,6 +65,14 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   try {
+    // Hosted legal pages (real URLs for App Store review).
+    if (url.pathname === '/legal/terms' || url.pathname === '/legal/privacy' || url.pathname === '/legal/support') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(url.pathname.endsWith('terms') ? termsHTML
+            : url.pathname.endsWith('privacy') ? privacyHTML : supportHTML);
+      return;
+    }
+
     if (url.pathname === '/health') {
       res.end(JSON.stringify({
         ok: true,
