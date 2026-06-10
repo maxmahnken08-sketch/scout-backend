@@ -3,6 +3,12 @@ import { planTrip } from './lib/normalize.js';
 import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic.js';
 import { freshOffer, prebook, book } from './providers/liteapi.js';
 import { termsHTML, privacyHTML, supportHTML } from './legal.js';
+import { landingHTML } from './site.js';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 
 const PORT = process.env.PORT || 8787;
 
@@ -65,6 +71,27 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   try {
+    // Marketing landing page.
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(landingHTML);
+      return;
+    }
+    // Static assets (screenshots) for the landing page.
+    if (url.pathname.startsWith('/assets/')) {
+      const name = path.basename(url.pathname); // prevent path traversal
+      try {
+        const file = await readFile(path.join(PUBLIC_DIR, name));
+        const ext = path.extname(name).toLowerCase();
+        res.setHeader('Content-Type', ext === '.png' ? 'image/png' : ext === '.jpg' ? 'image/jpeg' : 'application/octet-stream');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.end(file);
+      } catch {
+        res.statusCode = 404; res.end(JSON.stringify({ error: 'not found' }));
+      }
+      return;
+    }
+
     // Hosted legal pages (real URLs for App Store review).
     if (url.pathname === '/legal/terms' || url.pathname === '/legal/privacy' || url.pathname === '/legal/support') {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
