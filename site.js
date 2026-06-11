@@ -8,6 +8,9 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
 <meta name="description" content="Scout is your AI travel planner. Describe your trip and get real flights, hotels, and ideas in seconds — within your budget."/>
 <meta property="og:title" content="Scout — Your perfect trip, scouted."/>
 <meta property="og:description" content="Plan any trip in seconds with AI. Real flights, hotels & ideas."/>
+<meta property="og:image" content="/assets/icon.png"/>
+<link rel="icon" type="image/png" href="/assets/icon.png"/>
+<link rel="apple-touch-icon" href="/assets/icon.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -39,8 +42,8 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
   nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(10,11,14,.55);border-bottom:1px solid var(--line);}
   nav .inner{display:flex;align-items:center;justify-content:space-between;padding:16px 0;}
   .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:20px;font-family:'Space Grotesk';}
-  .mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--coral),var(--peach));
-    box-shadow:0 6px 22px rgba(255,107,74,.5);display:grid;place-items:center;color:#fff;font-size:17px;}
+  .mark{width:32px;height:32px;border-radius:9px;object-fit:cover;
+    box-shadow:0 6px 22px rgba(255,107,74,.5);display:block;}
   .navlinks{display:flex;gap:26px;align-items:center;color:var(--muted);font-weight:500;font-size:15px;}
   .navlinks a:hover{color:var(--text);}
   .btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--coral),var(--peach));
@@ -143,7 +146,7 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
 <div class="grain"></div>
 
 <nav><div class="wrap inner">
-  <div class="brand"><span class="mark">◇</span>Scout</div>
+  <div class="brand"><img class="mark" src="/assets/icon.png" alt="Scout app icon"/>Scout</div>
   <div class="navlinks"><a href="#how">How it works</a><a href="#features">Features</a><a href="#peek">Screens</a></div>
   <a class="btn" href="#get">Get the app</a>
 </div></nav>
@@ -236,7 +239,7 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
 </section>
 
 <footer><div class="wrap fr">
-  <div class="brand" style="font-size:17px;"><span class="mark" style="width:26px;height:26px;font-size:14px;">◇</span>Scout</div>
+  <div class="brand" style="font-size:17px;"><img class="mark" src="/assets/icon.png" alt="Scout app icon" style="width:26px;height:26px;"/>Scout</div>
   <div>© 2026 Scout · <a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/support">Support</a></div>
 </div></footer>
 
