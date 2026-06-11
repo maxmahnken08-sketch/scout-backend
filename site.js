@@ -166,15 +166,12 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
 
   <div class="demo" id="demo">
     <div class="bar"><i></i><i></i><i></i></div>
-    <div class="bubble u" data-step="1">5 days in Lisbon under $1,500 🇵🇹</div>
-    <div id="typewrap" data-step="2"><div class="typing" id="typing"><i></i><i></i><i></i></div></div>
-    <div class="bubble s" data-step="3">Here's a 5-night Lisbon trip — flights compared across airlines, boutique stays, and the best eats, under your budget.</div>
-    <div class="tripcard" data-step="4">
-      <div class="ban">Lisbon · Portugal</div>
-      <div class="row"><span>✈︎ TAP Air · nonstop</span><span>$612</span></div>
-      <div class="row"><span>🛏 Lisbon Boutique Stay</span><span>$104/night</span></div>
-      <div class="row"><span>🍴 Time Out Market</span><span>4.7★</span></div>
-      <div class="row"><span>Total estimate</span><span>$1,344</span></div>
+    <div class="bubble u" id="d-user"></div>
+    <div id="typewrap"><div class="typing"><i></i><i></i><i></i></div></div>
+    <div class="bubble s" id="d-reply"></div>
+    <div class="tripcard" id="d-card">
+      <div class="ban" id="d-ban"></div>
+      <div id="d-rows"></div>
     </div>
   </div>
 </header>
@@ -248,21 +245,50 @@ export const landingHTML = `<!doctype html><html lang="en"><head>
   var io = new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});
   document.querySelectorAll('.reveal').forEach(function(el){io.observe(el);});
 
-  // Animated hero chat demo (loops)
+  // Animated hero chat demo — rotates through diverse prompts & cities
+  var demos=[
+    { u:"5 days in Lisbon under $1,500 🇵🇹",
+      reply:"Here's a 5-night Lisbon trip — flights across airlines, a boutique stay, and the best eats, under budget.",
+      ban:"Lisbon · Portugal", grad:"linear-gradient(120deg,#FF6B4A,#8B5CF6)",
+      rows:[["✈︎ TAP Air · nonstop","$612"],["🛏 Lisbon Boutique Stay","$104/nt"],["🍴 Time Out Market","4.7★"],["Total estimate","$1,344"]] },
+    { u:"A foodie weekend in Tokyo 🍣",
+      reply:"On it — 3 nights in Tokyo built around the food: markets, ramen, and an omakase splurge.",
+      ban:"Tokyo · Japan", grad:"linear-gradient(120deg,#FC5C7D,#6A82FB)",
+      rows:[["✈︎ ANA · 1 stop","$880"],["🛏 Shibuya Stay","$150/nt"],["🍴 Tsukiji + Afuri Ramen","4.8★"],["Total estimate","$1,780"]] },
+    { u:"Somewhere warm in February, under $800 ☀️",
+      reply:"Cancún fits perfectly — beach days, cenotes, and great tacos, well under $800.",
+      ban:"Cancún · Mexico", grad:"linear-gradient(120deg,#36D1DC,#5B86E5)",
+      rows:[["✈︎ JetBlue · nonstop","$298"],["🛏 Beachfront Hotel","$92/nt"],["🍴 Local taquería crawl","4.6★"],["Total estimate","$760"]] },
+    { u:"Art & tapas in Barcelona, 4 days 🎨",
+      reply:"Here's a 4-night Barcelona plan — Gaudí, the Gothic Quarter, and a tapas route through El Born.",
+      ban:"Barcelona · Spain", grad:"linear-gradient(120deg,#F7971E,#FF6B4A)",
+      rows:[["✈︎ Iberia · nonstop","$540"],["🛏 El Born Boutique","$120/nt"],["🍴 Tapas route · El Born","4.7★"],["Total estimate","$1,290"]] },
+    { u:"Where should I go for cherry blossoms in spring? 🌸",
+      reply:"Kyoto is unbeatable in late March — temples, river walks, and blossoms everywhere. Want me to plan it?",
+      ban:"Kyoto · Japan", grad:"linear-gradient(120deg,#FF9466,#C779D0)",
+      rows:[["✈︎ JAL · 1 stop","$910"],["🛏 Gion Ryokan","$180/nt"],["🍴 Nishiki Market","4.8★"],["Total estimate","$1,990"]] }
+  ];
+  var di=0;
+  function fill(d){
+    document.getElementById('d-user').textContent=d.u;
+    document.getElementById('d-reply').textContent=d.reply;
+    var ban=document.getElementById('d-ban'); ban.textContent=d.ban; ban.style.background=d.grad;
+    document.getElementById('d-rows').innerHTML=d.rows.map(function(r){
+      return '<div class="row"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>';
+    }).join('');
+  }
   function runDemo(){
-    var steps=[].slice.call(document.querySelectorAll('[data-step]'));
-    var typing=document.getElementById('typewrap');
-    steps.forEach(function(s){s.classList.remove('show');});
+    var d=demos[di%demos.length]; di++;
+    fill(d);
+    var user=document.getElementById('d-user'), reply=document.getElementById('d-reply'),
+        card=document.getElementById('d-card'), typing=document.getElementById('typewrap');
+    user.classList.remove('show'); reply.classList.remove('show'); card.classList.remove('show');
     typing.style.display='none';
-    var seq=[
-      [300, function(){show(1);}],
-      [900, function(){typing.style.display='block';}],
-      [2600,function(){typing.style.display='none';show(3);}],
-      [3200,function(){show(4);}],
-      [9000,function(){runDemo();}]
-    ];
-    function show(n){var el=document.querySelector('[data-step="'+n+'"]');if(el){el.classList.add('show');}}
-    seq.forEach(function(s){setTimeout(s[1],s[0]);});
+    setTimeout(function(){user.classList.add('show');},300);
+    setTimeout(function(){typing.style.display='block';},1000);
+    setTimeout(function(){typing.style.display='none';reply.classList.add('show');},2700);
+    setTimeout(function(){card.classList.add('show');},3300);
+    setTimeout(runDemo,8200);
   }
   runDemo();
 </script>
