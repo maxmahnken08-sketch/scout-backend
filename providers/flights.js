@@ -1,6 +1,6 @@
 import { searchAmadeus } from './amadeus.js';
 import { searchDuffel } from './duffel.js';
-import { searchTravelpayoutsFlights } from './travelpayouts.js';
+import { searchTravelpayoutsFlights, bookingOptions } from './travelpayouts.js';
 
 // The flights provider. Tries the broadest source you have keys for, in order:
 //   1. Amadeus      — Delta, American, JetBlue, United, ... (enterprise, gated)
@@ -12,17 +12,33 @@ export const flights = {
   kind: 'flights',
   async search(intent) {
     const amadeus = await safe(() => searchAmadeus(intent));
-    if (amadeus.length) return amadeus;
+    if (amadeus.length) return withBookingMenu(amadeus, intent);
 
     const duffel = await safe(() => searchDuffel(intent));
-    if (duffel.length) return duffel;
+    if (duffel.length) return withBookingMenu(duffel, intent);
 
     const tp = await safe(() => searchTravelpayoutsFlights(intent));
-    if (tp.length) return tp;
+    if (tp.length) return withBookingMenu(tp, intent);
 
-    return stub(intent);
+    return withBookingMenu(stub(intent), intent);
   },
 };
+
+// Attach the multi-source booking menu (Expedia, Google Flights, Kayak,
+// Skyscanner, Priceline, +Aviasales when affiliate link exists) to every
+// flight, whichever provider it came from. Primary link = Expedia.
+function withBookingMenu(results, intent) {
+  const origin = intent.origin || 'JFK';
+  const dest = intent.destinationCode;
+  const depart = intent.departureDate;
+  if (!dest || !depart) return results; // can't build deep links without route+date
+  return results.map((f) => {
+    if (f.bookingOptions) return f;
+    const aviasales = /aviasales/.test(f.bookingURL || '') ? f.bookingURL : null;
+    const options = bookingOptions(origin, dest, depart, intent.checkout || null, aviasales);
+    return { ...f, bookingURL: options[0].url, bookingOptions: options };
+  });
+}
 
 async function safe(fn) {
   try {
