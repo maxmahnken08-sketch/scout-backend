@@ -34,7 +34,7 @@ function readJson(req) {
 // The conversational brain. Claude answers any question and decides when to
 // plan a trip; we run the real provider search for trip requests. Falls back
 // to the rule-based planner if no ANTHROPIC_API_KEY is configured.
-async function handleChat(messages, origin) {
+async function handleChat(messages, origin, airline) {
   const history = (messages || [])
     .filter((m) => m && (typeof m.content === 'string' && m.content.trim() || m.image))
     .map((m) => ({
@@ -47,14 +47,14 @@ async function handleChat(messages, origin) {
 
   if (!hasClaude()) {
     // No AI key yet — keep working by always planning a trip (legacy behavior).
-    const plan = await planTrip(lastUser || 'trip', { origin });
+    const plan = await planTrip(lastUser || 'trip', { origin, airline });
     return { reply: plan.intro, followUp: plan.followUp, trip: plan.trip };
   }
 
   const { text, toolQuery } = await claudeChat(history);
 
   if (toolQuery) {
-    const plan = await planTrip(toolQuery || lastUser, { origin });
+    const plan = await planTrip(toolQuery || lastUser, { origin, airline });
     return {
       reply: text || plan.intro,
       followUp: plan.followUp,
@@ -215,7 +215,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const origin = payload.origin || url.searchParams.get('origin');
-      const result = await handleChat(messages, origin);
+      const airline = payload.airline || url.searchParams.get('airline');
+      const result = await handleChat(messages, origin, airline);
       res.end(JSON.stringify(result));
       return;
     }
@@ -227,7 +228,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: 'missing query param ?q=' }));
         return;
       }
-      const plan = await planTrip(q, { origin: url.searchParams.get('origin') });
+      const plan = await planTrip(q, { origin: url.searchParams.get('origin'), airline: url.searchParams.get('airline') });
       res.end(JSON.stringify(plan));
       return;
     }
