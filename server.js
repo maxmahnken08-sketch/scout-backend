@@ -228,7 +228,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: 'missing query param ?q=' }));
         return;
       }
-      const plan = await planTrip(q, { origin: url.searchParams.get('origin'), airline: url.searchParams.get('airline') });
+      const plan = await planTrip(q, { origin: url.searchParams.get('origin'), airline: url.searchParams.get('airline'), budget: url.searchParams.get('budget') });
       res.end(JSON.stringify(plan));
       return;
     }
