@@ -4,6 +4,8 @@ import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic
 import { freshOffer, prebook, book } from './providers/liteapi.js';
 import { termsHTML, privacyHTML, supportHTML } from './legal.js';
 import { landingHTML } from './site.js';
+import { adminHTML } from './admin.js';
+import { record, summary } from './lib/stats.js';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -166,7 +168,9 @@ const server = http.createServer(async (req, res) => {
       if (!b.prebookId || !b.transactionId) {
         res.statusCode = 400; res.end(JSON.stringify({ error: 'missing prebookId or transactionId' })); return;
       }
-      res.end(JSON.stringify(await book(b)));
+      const confirmation = await book(b);
+      record('booking', { amount: b.amount, hotel: confirmation.hotelName });
+      res.end(JSON.stringify(confirmation));
       return;
     }
 
@@ -189,6 +193,28 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       res.end(JSON.stringify(await listModels()));
+      return;
+    }
+
+    // Private admin dashboard (requires ADMIN_KEY; /admin?key=... sets a cookie).
+    if (url.pathname === '/admin' || url.pathname === '/admin/data') {
+      const KEY = process.env.ADMIN_KEY || '';
+      const cookieKey = /scout_admin=([^;]+)/.exec(req.headers.cookie || '')?.[1];
+      const given = url.searchParams.get('key') || cookieKey;
+      if (!KEY || given !== KEY) {
+        if (url.pathname === '/admin/data') { res.end(JSON.stringify({ error: 'unauthorized' })); return; }
+        res.statusCode = 401;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(KEY ? '<body style="background:#0A0B0E;color:#F4F5F7;font-family:system-ui;padding:40px">Unauthorized — open <code>/admin?key=YOUR_ADMIN_KEY</code></body>'
+                    : '<body style="background:#0A0B0E;color:#F4F5F7;font-family:system-ui;padding:40px">Admin disabled — set the <code>ADMIN_KEY</code> environment variable on Render.</body>');
+        return;
+      }
+      if (url.searchParams.get('key')) {
+        res.setHeader('Set-Cookie', `scout_admin=${KEY}; Path=/; Max-Age=31536000; HttpOnly; Secure`);
+      }
+      if (url.pathname === '/admin/data') { res.end(JSON.stringify(summary())); return; }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(adminHTML);
       return;
     }
 
@@ -217,6 +243,8 @@ const server = http.createServer(async (req, res) => {
       const origin = payload.origin || url.searchParams.get('origin');
       const airline = payload.airline || url.searchParams.get('airline');
       const result = await handleChat(messages, origin, airline);
+      record('chat');
+      if (result.trip) record('plan', { destination: result.trip.destination, budget: result.trip.budgetLimit });
       res.end(JSON.stringify(result));
       return;
     }
@@ -229,6 +257,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const plan = await planTrip(q, { origin: url.searchParams.get('origin'), airline: url.searchParams.get('airline'), budget: url.searchParams.get('budget') });
+      record('plan', { destination: plan.trip.destination, budget: plan.trip.budgetLimit });
       res.end(JSON.stringify(plan));
       return;
     }
