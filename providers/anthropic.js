@@ -12,13 +12,22 @@ export function hasClaude() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-// Resolve which model to call. If ANTHROPIC_MODEL is set, trust it. Otherwise
-// ask the API which models THIS key can access and pick the cheapest sensible
-// one (Haiku > Sonnet > whatever's first). Cached after the first lookup so we
-// don't pay the round-trip on every chat.
+// Resolve which model to call.
+//
+// Pinned by default. The old behavior asked the API which models the key could
+// access and took the first Haiku it found — which happened to be the cheapest,
+// but nothing guaranteed it. This key can also reach claude-opus-5 ($5/$25) and
+// claude-fable-5 ($10/$50); a change in that list would have silently multiplied
+// the bill by 5-10x with no code change and no alert.
+//
+// Also accepts SCOUT_MODEL, which render.yaml and .env were already setting
+// against a variable nothing read.
+const DEFAULT_MODEL = 'claude-haiku-4-5';
+
 let cachedModel = null;
 async function resolveModel() {
-  if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
+  const pinned = process.env.ANTHROPIC_MODEL || process.env.SCOUT_MODEL || DEFAULT_MODEL;
+  if (pinned) return pinned;
   if (cachedModel) return cachedModel;
 
   const res = await fetch(MODELS_URL, {
