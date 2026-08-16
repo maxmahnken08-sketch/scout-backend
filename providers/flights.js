@@ -1,12 +1,15 @@
 import { searchAmadeus } from './amadeus.js';
 import { searchDuffel } from './duffel.js';
 import { searchTravelpayoutsFlights, bookingOptions } from './travelpayouts.js';
+import { stubOr } from '../lib/stubs.js';
 
 // The flights provider. Tries the broadest source you have keys for, in order:
 //   1. Amadeus      — Delta, American, JetBlue, United, ... (enterprise, gated)
 //   2. Duffel       — American, JetBlue, many international (business signup)
 //   3. Travelpayouts — affiliate prices incl. major airlines (free, indie-friendly)
-//   4. Stub         — realistic sample data so the backend always runs keyless
+//   4. Stub         — sample data, OFF unless SCOUT_ALLOW_STUBS=1. Invented
+//                     airfares are the most dangerous fake data in the app:
+//                     someone could budget a trip around a price that isn't real.
 export const flights = {
   name: 'Flights',
   kind: 'flights',
@@ -20,7 +23,7 @@ export const flights = {
     const tp = await safe(() => searchTravelpayoutsFlights(intent));
     if (tp.length) return withBookingMenu(tp, intent);
 
-    return withBookingMenu(stub(intent), intent);
+    return withBookingMenu(stubOr(stub(intent)), intent);
   },
 };
 
