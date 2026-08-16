@@ -314,6 +314,61 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Server-sent events version of /plan. Same work, same result — but each
+    // stage reports the moment it actually settles, so the app's planning screen
+    // reflects real progress instead of a timer. Falls back to /plan if the
+    // client can't hold a stream open.
+    if (url.pathname === '/plan/stream') {
+      const q = url.searchParams.get('q') || '';
+      if (!q.trim()) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'missing query param ?q=' }));
+        return;
+      }
+      const gate = consume(req, 'plan');
+      if (!gate.ok) {
+        res.statusCode = 429;
+        res.setHeader('Retry-After', String(gate.retryAfter));
+        res.end(JSON.stringify({ error: 'Too many trip plans in the last hour. Try again shortly.' }));
+        return;
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        // Render sits behind a proxy that will otherwise buffer the whole stream.
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      let closed = false;
+      req.on('close', () => { closed = true; });
+      const send = (event, data) => {
+        if (closed) return;
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      // Some proxies won't flush until they've seen a few hundred bytes.
+      res.write(`: ${' '.repeat(2048)}\n\n`);
+      send('open', { ok: true });
+
+      try {
+        const plan = await planTrip(q, {
+          origin: url.searchParams.get('origin'),
+          airline: url.searchParams.get('airline'),
+          budget: url.searchParams.get('budget'),
+          onPhase: (phase, state, detail) => send('phase', { phase, state, ...(detail || {}) }),
+        });
+        record('plan', { destination: plan.trip.destination, budget: plan.trip.budgetLimit });
+        send('plan', plan);
+      } catch (err) {
+        send('failed', { error: String(err?.message || err) });
+      }
+      if (!closed) res.end();
+      return;
+    }
+
     if (url.pathname === '/plan') {
       const q = url.searchParams.get('q') || '';
       if (!q.trim()) {
