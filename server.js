@@ -26,10 +26,9 @@ function capabilities() {
     // Wikipedia backs activities with no key, so that kind is always live —
     // just richer (bookable, priced, rated) once Viator or GetYourGuide is on.
     activities: true,
-    // Restaurants have no reliable keyless source. OpenStreetMap is attempted
-    // opportunistically but the public Overpass API is too flaky to promise,
-    // so this stays false until Google Places is configured.
-    restaurants: has('GOOGLE_PLACES_API_KEY'),
+    // Wikivoyage backs restaurants with no key, so this kind is live too —
+    // richer (rated, photographed) once Google Places is configured.
+    restaurants: true,
   };
 }
 
