@@ -15,6 +15,19 @@ const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'publ
 
 const PORT = process.env.PORT || 8787;
 
+// Which result kinds have at least one provider that can actually return data.
+// A kind is live only if a key is present; stubs no longer paper over the gap,
+// so an unkeyed kind means an empty section in the app.
+function capabilities() {
+  const has = (...names) => names.some((n) => !!process.env[n]);
+  return {
+    flights: has('TRAVELPAYOUTS_TOKEN', 'AMADEUS_CLIENT_ID', 'DUFFEL_TOKEN'),
+    stays: has('LITEAPI_KEY', 'LITEAPI_SANDBOX_KEY', 'EXPEDIA_API_KEY', 'BOOKING_TOKEN'),
+    activities: has('VIATOR_API_KEY', 'GETYOURGUIDE_TOKEN'),
+    restaurants: has('GOOGLE_PLACES_API_KEY'),
+  };
+}
+
 // Read and JSON-parse a request body (small payloads only).
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -152,6 +165,10 @@ const server = http.createServer(async (req, res) => {
           googlePlaces: !!process.env.GOOGLE_PLACES_API_KEY,
           viator: !!process.env.VIATOR_API_KEY,
         },
+        // What the app can honestly claim to do right now, by result kind.
+        // The agent cards read this instead of promising a specialist who has
+        // no provider behind them and would return an empty section.
+        capabilities: capabilities(),
       }));
       return;
     }
