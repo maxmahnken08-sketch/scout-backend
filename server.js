@@ -23,7 +23,12 @@ function capabilities() {
   return {
     flights: has('TRAVELPAYOUTS_TOKEN', 'AMADEUS_CLIENT_ID', 'DUFFEL_TOKEN'),
     stays: has('LITEAPI_KEY', 'LITEAPI_SANDBOX_KEY', 'EXPEDIA_API_KEY', 'BOOKING_TOKEN'),
-    activities: has('VIATOR_API_KEY', 'GETYOURGUIDE_TOKEN'),
+    // Wikipedia backs activities with no key, so that kind is always live —
+    // just richer (bookable, priced, rated) once Viator or GetYourGuide is on.
+    activities: true,
+    // Restaurants have no reliable keyless source. OpenStreetMap is attempted
+    // opportunistically but the public Overpass API is too flaky to promise,
+    // so this stays false until Google Places is configured.
     restaurants: has('GOOGLE_PLACES_API_KEY'),
   };
 }
