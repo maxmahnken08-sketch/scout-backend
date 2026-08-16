@@ -10,6 +10,8 @@
 // into Scout's `stays` shape. Falls back to a realistic stub when unkeyed or
 // on any error, so the backend always returns something.
 
+import { stubOr } from '../lib/stubs.js';
+
 const BASE = 'https://api.liteapi.travel/v3.0';
 
 function KEY() {
@@ -103,6 +105,32 @@ function chainOf(name) {
   return CHAINS.find((c) => lower.includes(c.toLowerCase())) || null;
 }
 
+// LiteAPI static hotel data carries supplier photography, and displaying it is
+// part of the API terms. Field naming varies across their responses, so try the
+// documented shapes in order and fall back to null (the app draws its gradient).
+function imageOf(meta) {
+  if (!meta) return null;
+  const candidate =
+    meta.main_photo ||
+    meta.mainPhoto ||
+    meta.thumbnail ||
+    meta.hotelImages?.[0]?.urlHd ||
+    meta.hotelImages?.[0]?.url ||
+    meta.images?.[0]?.url ||
+    (typeof meta.images?.[0] === 'string' ? meta.images[0] : null);
+  return httpsOrNull(candidate);
+}
+
+// Only hand the app https URLs — ATS blocks plain http, and a bad value would
+// silently render as a broken image instead of the gradient fallback.
+export function httpsOrNull(url) {
+  if (typeof url !== 'string' || !url) return null;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  if (trimmed.startsWith('http://')) return `https://${trimmed.slice(7)}`;
+  return trimmed.startsWith('https://') ? trimmed : null;
+}
+
 // Choose a diverse, useful set: a budget pick + recognizable mainstream chains
 // (cheapest per distinct brand) + fill with next-cheapest. Keeps users in
 // familiar territory instead of only obscure cheapest options.
@@ -193,16 +221,16 @@ export const liteapiStays = {
   name: 'LiteAPI',
   kind: 'stays',
   async search(intent) {
-    if (!KEY()) return stubStays(intent);
+    if (!KEY()) return stubOr(stubStays(intent));
     try {
       const place = await resolvePlace(intent);
-      if (!place) return stubStays(intent);
+      if (!place) return stubOr(stubStays(intent));
 
       const { ids, byId } = await hotelIdsFor(place);
-      if (!ids.length) return stubStays(intent);
+      if (!ids.length) return stubOr(stubStays(intent));
 
       const rated = await ratesFor(ids, intent);
-      if (!rated.length) return stubStays(intent);
+      if (!rated.length) return stubOr(stubStays(intent));
 
       const nights = intent.nights || 5;
       const mapped = rated.map((entry) => {
@@ -222,6 +250,8 @@ export const liteapiStays = {
             : (meta.rating > 0 ? Math.round((meta.rating / 2) * 10) / 10 : 4),
           // Label recognizable brands so users see familiar names highlighted.
           tag: brand || (meta.stars >= 5 ? 'Luxury' : 'Great value'),
+          // Supplier photography — null when LiteAPI has none for this hotel.
+          imageURL: imageOf(meta),
           // "Book" → Booking.com affiliate deep-link (commission via BOOKING_AID).
           bookingURL: bookingDeepLink(name, meta.city || place.cityName,
                                       intent.checkin, intent.checkout),
@@ -230,10 +260,10 @@ export const liteapiStays = {
 
       // Surface a diverse mix (budget + mainstream chains), up to 6.
       const picked = pickDiverse(mapped, 6);
-      return picked.length ? picked : stubStays(intent);
+      return picked.length ? picked : stubOr(stubStays(intent));
     } catch (err) {
       console.warn('LiteAPI hotels failed:', err?.message || err);
-      return stubStays(intent);
+      return stubOr(stubStays(intent));
     }
   },
 };

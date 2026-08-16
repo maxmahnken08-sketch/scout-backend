@@ -7,8 +7,21 @@
 //    against your Rapid account, and join content for human-readable names.
 
 import crypto from 'node:crypto';
+import { httpsOrNull } from './liteapi.js';
 
 const HOST = 'https://api.ean.com';
+
+// Property photography comes from the /v3/properties/content join, which the
+// caller stashes on intent.contentById alongside name and area.
+function imageOf(content) {
+  const img = content?.images?.[0];
+  const candidate =
+    img?.links?.['1000px']?.href ||
+    img?.links?.['350px']?.href ||
+    img?.href ||
+    content?.thumbnail;
+  return httpsOrNull(candidate);
+}
 
 export const expedia = {
   name: 'Expedia Rapid',
@@ -60,6 +73,7 @@ async function live(intent) {
     rating: 4.5,
     tag: 'Expedia',
     bookingURL: 'https://www.expedia.com',
+    imageURL: imageOf(intent.contentById?.[p.property_id]),
   }));
 }
 

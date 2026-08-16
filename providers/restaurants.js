@@ -5,7 +5,23 @@
 //   Header: X-Goog-Api-Key, X-Goog-FieldMask
 // Falls back to a realistic stub when no key, so the backend always returns eats.
 
+import { stubOr } from '../lib/stubs.js';
+
 const KEY = () => process.env.GOOGLE_PLACES_API_KEY || '';
+
+// Where this backend is reachable from the app. Places photo URLs must be
+// proxied (see /img/place in server.js) because fetching one needs the API key.
+const PUBLIC_BASE = () => (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+
+// Google hands back a photo *resource name*, not a URL. Turn it into a link to
+// our own proxy. Without PUBLIC_BASE_URL set we return null rather than a
+// relative path the app can't resolve.
+function photoURL(place) {
+  const ref = place?.photos?.[0]?.name;
+  const base = PUBLIC_BASE();
+  if (!ref || !base) return null;
+  return `${base}/img/place?ref=${encodeURIComponent(ref)}&w=800`;
+}
 
 // Google priceLevel enum → $ signs.
 const PRICE = {
@@ -29,7 +45,7 @@ export const restaurants = {
   kind: 'restaurants',
   async search(intent) {
     const city = intent.destination || 'Tokyo';
-    if (!KEY()) return stub(city);
+    if (!KEY()) return stubOr(stub(city));
     try {
       const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',
@@ -39,7 +55,7 @@ export const restaurants = {
           'X-Goog-FieldMask': [
             'places.displayName', 'places.rating', 'places.userRatingCount',
             'places.priceLevel', 'places.primaryTypeDisplayName',
-            'places.googleMapsUri', 'places.editorialSummary',
+            'places.googleMapsUri', 'places.editorialSummary', 'places.photos',
           ].join(','),
         },
         body: JSON.stringify({
@@ -56,7 +72,7 @@ export const restaurants = {
           (b.rating * Math.log10((b.userRatingCount || 1) + 10)) -
           (a.rating * Math.log10((a.userRatingCount || 1) + 10)))
         .slice(0, 4);
-      if (!places.length) return stub(city);
+      if (!places.length) return stubOr(stub(city));
 
       return places.map((p, i) => {
         const type = p.primaryTypeDisplayName?.text || 'Restaurant';
@@ -70,11 +86,12 @@ export const restaurants = {
             : reviews > 1000 ? 'Crowd favorite'
             : 'Highly rated',
           bookingURL: p.googleMapsUri || null,
+          imageURL: photoURL(p),
         };
       });
     } catch (err) {
       console.warn('Google Places restaurants failed:', err?.message || err);
-      return stub(city);
+      return stubOr(stub(city));
     }
   },
 };

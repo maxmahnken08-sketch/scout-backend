@@ -6,6 +6,7 @@ import { termsHTML, privacyHTML, supportHTML } from './legal.js';
 import { landingHTML } from './site.js';
 import { adminHTML } from './admin.js';
 import { record, summary } from './lib/stats.js';
+import { consume } from './lib/ratelimit.js';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -90,6 +91,42 @@ const server = http.createServer(async (req, res) => {
         res.end(file);
       } catch {
         res.statusCode = 404; res.end(JSON.stringify({ error: 'not found' }));
+      }
+      return;
+    }
+
+    // Google Places photo proxy.
+    //
+    // The Places photo endpoint needs the API key in the request, so the app can
+    // never fetch these directly without leaking it. The app asks us for
+    // /img/place?ref=<photo resource name> and we stream the bytes back.
+    //
+    // Note this costs one Places Photo request per cache miss — the long
+    // Cache-Control below keeps repeat views off the meter.
+    if (url.pathname === '/img/place') {
+      const ref = url.searchParams.get('ref') || '';
+      const key = process.env.GOOGLE_PLACES_API_KEY || '';
+      // Only ever accept the shape Google issues: places/<id>/photos/<id>
+      if (!key || !/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(ref)) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'bad photo reference' }));
+        return;
+      }
+      const width = Math.min(Number(url.searchParams.get('w')) || 800, 1600);
+      try {
+        const upstream = await fetch(
+          `https://places.googleapis.com/v1/${ref}/media?maxWidthPx=${width}&key=${key}`,
+          { redirect: 'follow' },
+        );
+        if (!upstream.ok) throw new Error(`places photo ${upstream.status}`);
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=604800'); // a week
+        res.end(buf);
+      } catch (err) {
+        console.warn('Places photo proxy failed:', err?.message || err);
+        res.statusCode = 502;
+        res.end(JSON.stringify({ error: 'photo unavailable' }));
       }
       return;
     }
@@ -222,9 +259,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/chat') {
       if (req.method === 'OPTIONS') {
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'content-type');
+        res.setHeader('Access-Control-Allow-Headers', 'content-type, x-scout-client');
         res.statusCode = 204;
         res.end();
+        return;
+      }
+      const gate = consume(req, 'chat');
+      if (!gate.ok) {
+        res.statusCode = 429;
+        res.setHeader('Retry-After', String(gate.retryAfter));
+        res.end(JSON.stringify({ error: 'Too many requests. Try again shortly.' }));
         return;
       }
       let payload = {};
@@ -254,6 +298,13 @@ const server = http.createServer(async (req, res) => {
       if (!q.trim()) {
         res.statusCode = 400;
         res.end(JSON.stringify({ error: 'missing query param ?q=' }));
+        return;
+      }
+      const gate = consume(req, 'plan');
+      if (!gate.ok) {
+        res.statusCode = 429;
+        res.setHeader('Retry-After', String(gate.retryAfter));
+        res.end(JSON.stringify({ error: 'Too many trip plans in the last hour. Try again shortly.' }));
         return;
       }
       const plan = await planTrip(q, { origin: url.searchParams.get('origin'), airline: url.searchParams.get('airline'), budget: url.searchParams.get('budget') });

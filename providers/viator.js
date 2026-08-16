@@ -6,6 +6,22 @@
 const SEARCH = 'https://api.viator.com/partner/products/search';
 const DESTINATIONS = 'https://api.viator.com/partner/destinations';
 
+import { httpsOrNull } from './liteapi.js';
+import { stubOr } from '../lib/stubs.js';
+
+// Viator products ship an images array, each with several sized variants.
+// Pick the widest variant at or under 900px — big enough for a full-width card
+// on a 3x screen, small enough not to waste the user's data.
+function imageOf(product) {
+  const variants = product?.images?.[0]?.variants || [];
+  if (!variants.length) return null;
+  const usable = variants
+    .filter((v) => (v.width || 0) <= 900)
+    .sort((a, b) => (b.width || 0) - (a.width || 0));
+  const pick = usable[0] || variants[variants.length - 1];
+  return httpsOrNull(pick?.url);
+}
+
 // Cache the (large) destination taxonomy in memory after the first fetch so we
 // can map a city name → Viator's numeric destinationId on demand.
 let destCache = null;
@@ -38,14 +54,14 @@ export const viator = {
   name: 'Viator',
   kind: 'activities',
   async search(intent) {
-    if (!process.env.VIATOR_API_KEY) return stub(intent);
+    if (!process.env.VIATOR_API_KEY) return stubOr(stub(intent));
     try {
       const destId = intent.viatorDestId || await resolveDestId(intent.destination);
-      if (!destId) return stub(intent);
+      if (!destId) return stubOr(stub(intent));
       return await live({ ...intent, viatorDestId: destId });
     } catch (err) {
       console.warn('Viator live search failed:', err?.message || err);
-      return stub(intent);
+      return stubOr(stub(intent));
     }
   },
 };
@@ -76,6 +92,7 @@ async function live(intent) {
     price: Math.round(p.pricing?.summary?.fromPrice ?? 0),
     rating: Number(p.reviews?.combinedAverageRating ?? 4.6),
     bookingURL: p.productUrl || 'https://www.viator.com',
+    imageURL: imageOf(p),
   }));
 }
 

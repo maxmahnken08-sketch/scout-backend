@@ -5,7 +5,21 @@
 //    accommodations. Body/field shapes below follow Demand API v3.1 — verify
 //    against your account and adjust map() as needed.
 
+import { httpsOrNull } from './liteapi.js';
+
 const API = 'https://demandapi.booking.com/3.1/accommodations/search';
+
+// Booking.com returns photo URLs with a {size} placeholder in some shapes;
+// request a large square when we see one.
+function imageOf(h) {
+  const raw =
+    h?.photos?.[0]?.url ||
+    h?.main_photo_url ||
+    h?.photo_url ||
+    (typeof h?.photos?.[0] === 'string' ? h.photos[0] : null);
+  if (typeof raw !== 'string') return null;
+  return httpsOrNull(raw.replace('{size}', 'square500'));
+}
 
 export const booking = {
   name: 'Booking.com',
@@ -49,6 +63,7 @@ async function live(intent) {
     rating: Number(h.review_score ? h.review_score / 2 : 4.5), // 10-scale -> 5-scale
     tag: 'Booking.com',
     bookingURL: h.url || 'https://www.booking.com',
+    imageURL: imageOf(h),
   }));
 }
 
