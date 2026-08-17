@@ -14,6 +14,8 @@
 // the photographer. Shipping the picture without the credit is just taking it.
 
 const SUMMARY = 'https://en.wikipedia.org/api/rest_v1/page/summary';
+const VOYAGE = 'https://en.wikivoyage.org/w/api.php';
+const UNSPLASH = 'https://api.unsplash.com/search/photos';
 // Credits live on Commons, not on en.wikipedia. Asking the wrong host returns
 // a page-not-found for the file and silently costs you the attribution.
 const API = 'https://commons.wikimedia.org/w/api.php';
@@ -47,6 +49,80 @@ function plain(html) {
     .slice(0, 90);
 }
 
+
+/**
+ * Is this actually a photograph of the place?
+ *
+ * Wikivoyage's page image is just the article's first image, which for Lisbon
+ * is a map of the city's districts. Wikipedia's lead image is usually better but
+ * can be a coat of arms. Both are worse than no picture on a travel hero, so
+ * anything that smells like a diagram gets thrown out by name, and anything
+ * taller than it is wide gets thrown out by shape — heroes are landscape.
+ */
+function looksLikeAPhoto(url, width, height) {
+  if (!url) return false;
+  const name = decodeURIComponent(url.split('?')[0]).toLowerCase();
+  if (/\.svg$/.test(name)) return false;
+  const banned = ['map', 'district', 'diagram', 'flag', 'coat_of_arms', 'coatofarms',
+                  'seal', 'logo', 'locator', 'location', 'plan_', 'chart', 'graph',
+                  'blank', 'outline', 'divisions', 'freguesias'];
+  if (banned.some((w) => name.includes(w))) return false;
+  if (width && height && height > width * 1.05) return false;   // portrait
+  return true;
+}
+
+/** Wikivoyage's page image — a scenic shot far more often than not. */
+async function fromWikivoyage(title) {
+  try {
+    const params = new URLSearchParams({
+      action: 'query', format: 'json', titles: title,
+      prop: 'pageimages', piprop: 'original', redirects: '1',
+    });
+    const res = await fetch(`${VOYAGE}?${params}`, { headers: { 'User-Agent': UA } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const page = Object.values(data?.query?.pages || {})[0] || {};
+    const o = page.original;
+    if (!o?.source) return null;
+    // Wikivoyage appends a tracking query; the file itself is the bit before it.
+    const clean = o.source.split('?')[0];
+    return looksLikeAPhoto(clean, o.width, o.height) ? clean : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Unsplash, when a key is present. Professionally shot, properly licensed for
+ * commercial use, and free — but it needs an access key, so everything above
+ * exists to make sure the app is never without a picture in the meantime.
+ */
+async function fromUnsplash(city, country) {
+  const key = process.env.UNSPLASH_ACCESS_KEY;
+  if (!key) return null;
+  try {
+    const params = new URLSearchParams({
+      query: [city, country].filter(Boolean).join(' '),
+      orientation: 'landscape', per_page: '1', content_filter: 'high',
+    });
+    const res = await fetch(`${UNSPLASH}?${params}`, {
+      headers: { Authorization: `Client-ID ${key}`, 'Accept-Version': 'v1' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hit = data?.results?.[0];
+    if (!hit?.urls?.regular) return null;
+    return {
+      url: hit.urls.regular,
+      credit: hit.user?.name || 'Unsplash',
+      license: 'Unsplash',
+      source: 'unsplash',
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * A photograph of a place, with the credit it's licensed under.
  * @returns {Promise<{url:string, credit:string, license:string, source:string}|null>}
@@ -60,13 +136,17 @@ export async function destinationPhoto(city, country = '') {
   if (hit !== null) return hit;
 
   try {
-    // Try the bare name, then the name qualified by country. Plenty of cities
-    // share a name — "Queenstown" alone is a disambiguation page — and a photo
-    // of the wrong one is worse than no photo at all.
-    const candidates = [name];
-    if (country) candidates.push(`${name}, ${country}`);
+    // Best first. Unsplash is curated travel photography; Wikivoyage is written
+    // for travellers so its pictures usually are too; Wikipedia is the backstop.
+    const unsplash = await fromUnsplash(name, country);
+    if (unsplash) return remember(key, unsplash);
 
-    for (const title of candidates) {
+    for (const title of [name, country ? `${name}, ${country}` : null].filter(Boolean)) {
+      const voyage = await fromWikivoyage(title);
+      if (voyage) return remember(key, await withCredit(voyage));
+    }
+
+    for (const title of [name, country ? `${name}, ${country}` : null].filter(Boolean)) {
       const res = await fetch(`${SUMMARY}/${encodeURIComponent(title)}`, {
         headers: { 'User-Agent': UA, accept: 'application/json' },
       });
@@ -74,16 +154,16 @@ export async function destinationPhoto(city, country = '') {
       const data = await res.json();
       if (data.type === 'disambiguation') continue;
 
-      // Prefer the full-size original; the thumbnail is often only 320px wide,
-      // which is soft on a hero spanning a phone screen at 3x.
-      const url = data.originalimage?.source || data.thumbnail?.source;
+      const img = data.originalimage || data.thumbnail;
+      const url = img?.source;
       if (!url || !/^https:/.test(url)) continue;
+      if (!looksLikeAPhoto(url, img.width, img.height)) continue;
 
       return remember(key, await withCredit(url));
     }
     return remember(key, null);
   } catch (err) {
-    console.warn('Wikimedia photo failed:', err?.message || err);
+    console.warn('Destination photo failed:', err?.message || err);
     return remember(key, null);
   }
 }
