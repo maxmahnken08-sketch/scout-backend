@@ -47,10 +47,13 @@ export async function searchTravelpayoutsFlights(intent) {
     const fullDate = intent.departureDate || daysFromNow(30); // YYYY-MM-DD
     const month = fullDate.slice(0, 7);                        // YYYY-MM
 
-    const query = async (departure_at) => {
+    const query = async (departure_at, direct) => {
       const params = new URLSearchParams({
         origin, destination: dest, departure_at,
-        currency: "usd", sorting: "price", direct: "false", limit: "5",
+        // 30, not 5. Asking for the cheapest five and picking from those is how
+        // a 14h50m connection wins a route that flies nonstop in 6h30m — there
+        // was simply nothing better in the set to compare it against.
+        currency: "usd", sorting: "price", direct: String(!!direct), limit: "30",
         one_way: "true", token: TOKEN(),
       });
       const res = await fetch(`https://api.travelpayouts.com/aviasales/v3/prices_for_dates?${params}`);
@@ -59,9 +62,27 @@ export async function searchTravelpayoutsFlights(intent) {
       return json.data || [];
     };
 
+    // Ask for nonstops separately. They're rarely the cheapest, so a price-sorted
+    // list of 30 can contain none at all on a long-haul route.
+    const gather = async (date) => {
+      const [any, direct] = await Promise.all([
+        query(date, false).catch(() => []),
+        query(date, true).catch(() => []),
+      ]);
+      const seen = new Set();
+      return [...direct, ...any].filter((f) => {
+        const key = `${f.airline}-${f.departure_at}-${f.price}-${f.transfers}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
     // Prefer the exact requested date; if no fares that day, widen to the month.
-    let data = await query(fullDate);
-    if (!data.length) data = await query(month);
+    let data = await gather(fullDate);
+    if (!data.length) data = await gather(month);
+
+    data = rankItineraries(data);
 
     const returnDate = intent.checkout || null;
     return data.slice(0, 3).map((f) => {
@@ -84,6 +105,40 @@ export async function searchTravelpayoutsFlights(intent) {
     console.warn("Travelpayouts flights failed:", err?.message || err);
     return [];
   }
+}
+
+
+/**
+ * Cheapest is not best. A fare that saves $40 by adding eight hours and a
+ * connection is a worse trip, and sorting on price alone is what surfaced a
+ * 14h50m Boston-Lisbon when the route flies nonstop in half that.
+ *
+ * So: throw away anything grossly slower than the quickest option on offer,
+ * then rank on price plus the value of the time it costs you. $40 an hour is a
+ * deliberately blunt number — enough that two extra hours has to buy a real
+ * saving, not so much that it always picks the premium nonstop.
+ */
+function rankItineraries(list) {
+  const usable = list.filter((f) => Number(f.price) > 0 && Number(f.duration) > 0);
+  if (usable.length < 2) return usable.length ? usable : list;
+
+  const quickest = Math.min(...usable.map((f) => f.duration));
+
+  // Anything over 1.9x the quickest is a different kind of trip, not a cheaper
+  // version of the same one. Keep the filter off if it would empty the list.
+  const sane = usable.filter((f) => f.duration <= quickest * 1.9);
+  const pool = sane.length ? sane : usable;
+
+  const HOURLY = 40;
+  return pool
+    .map((f) => ({
+      f,
+      score: Number(f.price)
+        + ((f.duration - quickest) / 60) * HOURLY
+        + (Number(f.transfers) || 0) * 25,   // connections carry their own risk
+    }))
+    .sort((a, b) => a.score - b.score)
+    .map((x) => x.f);
 }
 
 // --- Booking links across many sources -------------------------------------
