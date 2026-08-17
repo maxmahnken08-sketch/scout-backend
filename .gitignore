@@ -1,5 +1,10 @@
 node_modules/
 .env
 .DS_Store
-data/
-data/stats.json
+
+# Runtime data is ignored, but the airport dataset is source, not runtime — it
+# has to ship or /airports/nearest returns nothing for everyone. Written as
+# `data/*` rather than `data/` on purpose: git doesn't descend into an ignored
+# directory, so a negation under `data/` would never be reached.
+data/*
+!data/airports.json

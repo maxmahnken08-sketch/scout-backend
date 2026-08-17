@@ -2,6 +2,7 @@ import http from 'node:http';
 import { planTrip } from './lib/normalize.js';
 import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic.js';
 import { freshOffer, prebook, book } from './providers/liteapi.js';
+import { nearestAirports, airportCount } from './lib/airports.js';
 import { termsHTML, privacyHTML, supportHTML } from './legal.js';
 import { landingHTML } from './site.js';
 import { adminHTML } from './admin.js';
@@ -156,6 +157,25 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Nearest airports to a coordinate — what "Use my location" actually asks.
+    // Kept server-side so the airport dataset is one thing to update rather than
+    // something baked into every shipped build.
+    if (url.pathname === '/airports/nearest') {
+      const lat = Number(url.searchParams.get('lat'));
+      const lon = Number(url.searchParams.get('lon'));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
+          Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'lat and lon are required, and must be a real coordinate' }));
+        return;
+      }
+      // Local dataset — no key, no upstream call, no failure mode beyond the
+      // file being missing. An empty list means nothing within range, which is
+      // a real answer the app shows as "we couldn't find one, type it".
+      res.end(JSON.stringify({ airports: nearestAirports(lat, lon) }));
+      return;
+    }
+
     if (url.pathname === '/health') {
       res.end(JSON.stringify({
         ok: true,
@@ -168,7 +188,13 @@ const server = http.createServer(async (req, res) => {
           bookingAid: !!process.env.BOOKING_AID,
           googlePlaces: !!process.env.GOOGLE_PLACES_API_KEY,
           viator: !!process.env.VIATOR_API_KEY,
+          // Amadeus backs flight search, and was the one provider you couldn't
+          // check from outside.
+          amadeus: !!(process.env.AMADEUS_CLIENT_ID && process.env.AMADEUS_CLIENT_SECRET),
         },
+        // Airports loaded for /airports/nearest. Zero means the dataset didn't
+        // ship, which would otherwise look identical to "nothing near you".
+        airports: airportCount(),
         // What the app can honestly claim to do right now, by result kind.
         // The agent cards read this instead of promising a specialist who has
         // no provider behind them and would return an empty section.
