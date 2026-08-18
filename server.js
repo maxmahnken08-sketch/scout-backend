@@ -3,6 +3,7 @@ import { planTrip } from './lib/normalize.js';
 import { chat as claudeChat, hasClaude, listModels } from './providers/anthropic.js';
 import { freshOffer, prebook, book } from './providers/liteapi.js';
 import { nearestAirports, airportCount } from './lib/airports.js';
+import { flightStatus, hasFlightStatus } from './providers/flightstatus.js';
 import { termsHTML, privacyHTML, supportHTML } from './legal.js';
 import { landingHTML } from './site.js';
 import { adminHTML } from './admin.js';
@@ -176,6 +177,27 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Flight status — the lookup behind "Track my flight". Returns 404 when the
+    // flight isn't found so the app can say so, rather than scheduling reminders
+    // for a flight number nobody checked.
+    if (url.pathname === '/flights/status') {
+      const number = (url.searchParams.get('number') || '').trim();
+      const date = (url.searchParams.get('date') || '').trim();
+      if (!number || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'number and date (YYYY-MM-DD) are required' }));
+        return;
+      }
+      const flight = await flightStatus(number, date);
+      if (!flight) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'not found', keyed: hasFlightStatus() }));
+        return;
+      }
+      res.end(JSON.stringify(flight));
+      return;
+    }
+
     if (url.pathname === '/health') {
       res.end(JSON.stringify({
         ok: true,
@@ -191,6 +213,7 @@ const server = http.createServer(async (req, res) => {
           // Amadeus backs flight search, and was the one provider you couldn't
           // check from outside.
           amadeus: !!(process.env.AMADEUS_CLIENT_ID && process.env.AMADEUS_CLIENT_SECRET),
+          flightStatus: hasFlightStatus(),
         },
         // Airports loaded for /airports/nearest. Zero means the dataset didn't
         // ship, which would otherwise look identical to "nothing near you".
